@@ -114,15 +114,7 @@ int create_payload(const struct dns_query *query, unsigned char dns_payload[MAX_
 	return payload_idx;
 }
 
-void inject_response(const struct dns_query *query) {
-	// Khởi tạo libnet context
-	char errbuf[LIBNET_ERRBUF_SIZE];
-	libnet_t *libnet = libnet_init(LIBNET_RAW4, "virbr0", errbuf);
-	if (!libnet) {
-		printf("Response: Failed to init libnet: %s\n", errbuf);
-		return;
-	}
-
+void inject_response(libnet_t *libnet, const struct dns_query *query) {
 	// DNS payload
 	unsigned char dns_payload[MAX_PAYLOAD_LEN];
 	int payload_len = create_payload(query, dns_payload);
@@ -166,13 +158,20 @@ void inject_response(const struct dns_query *query) {
 		return;
 	}
 	printf("Inject successfull\n");
-	libnet_destroy(libnet);
+	libnet_clear_packet(libnet);
 }
 
 int response(struct response_args *args) {
 	queue_t *capture_response = args->capture_response;
 	queue_t *response_writelog = args->response_writelog;
 	struct domain_name *blacklist = args->blacklist;
+
+	// Khởi tạo libnet context
+	libnet_t *libnet = libnet_init(LIBNET_RAW4, "virbr0", NULL);
+	if (!libnet) {
+		printf("Response: Failed to init libnet\n", NULL);
+		return -1;
+	}
 
 	printf("Start response\n");
 	while (1) {
@@ -182,9 +181,11 @@ int response(struct response_args *args) {
 		}
 
 		if (is_invalid_query(query, blacklist)) {
-			inject_response(query);
+			inject_response(libnet, query);
 		}
 
 		queue_push(response_writelog, query);
 	}
+	libnet_destroy(libnet);
+	return 0;
 }
