@@ -1,14 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
 #include <signal.h>
 #include <pthread.h>
 
-#include "query.h"
+#include "fakedns.h"
+#include "config.h"
 #include "queue.h"
 #include "capture.h"
-#include "config.h"
 #include "response.h"
 #include "writelog.h"
 
@@ -45,8 +44,8 @@ int main(int argc, char *argv[]) {
 		printf("Failed to write capture_arg\n");
 		return -1;
 	}
-	capture_arg->interface = conf->interface_name;
-	capture_arg->queue = capture_response;
+	capture_arg->interface = conf->interface;
+	capture_arg->capture_response = capture_response;
 
 	if (pthread_create(&thread_capture, NULL, (void *)capture, capture_arg) != 0) {
 		printf("Failed to start capture\n");
@@ -59,9 +58,10 @@ int main(int argc, char *argv[]) {
 		printf("Failed to write response_arg\n");
 		return -1;
 	}
+	response_arg->interface = conf->interface;
 	response_arg->capture_response = capture_response;
 	response_arg->response_writelog = response_writelog;
-	response_arg->blacklist = conf->domain_list;
+	response_arg->blacklist = conf->blacklist;
 
 	if (pthread_create(&thread_response, NULL, (void *)response, response_arg) != 0) {
 		printf("Failed to start response\n");
@@ -74,8 +74,9 @@ int main(int argc, char *argv[]) {
 		printf("Failed to write writelog_arg\n");
 		return -1;
 	}
-	writelog_arg->q = response_writelog;
-	writelog_arg->path_to_log_file = "fakedns.log";
+	writelog_arg->response_writelog = response_writelog;
+	writelog_arg->path_to_log_file = PATH_TO_LOG;
+	
 	if (pthread_create(&thread_writelog, NULL, (void *)write_log, writelog_arg) != 0) {
 		printf("Failed to start write log\n");
 		return -1;

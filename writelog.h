@@ -2,8 +2,9 @@
 #define WRITELOG_H
 
 #include "queue.h"
+
 struct writelog_args {
-	queue_t *q;
+	queue_t *response_writelog;
 	char *path_to_log_file;
 };
 
