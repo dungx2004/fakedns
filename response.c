@@ -129,7 +129,7 @@ void inject_response(libnet_t *libnet, const struct dns_query *query, unsigned c
 		return;
 	}
 	printf("Inject successfull\n");
-	libnet_clear_packet(libnet);
+	libnet_destroy(libnet);
 }
 
 int response(struct response_args *args) {
