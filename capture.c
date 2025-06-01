@@ -74,6 +74,7 @@ void packet_handler(unsigned char *user_data, const struct pcap_pkthdr *pkthdr,
 	while (temp[qname_len] != '\0' && qname_len < MAX_NAME_LEN) {
 		qname_len++;
 	}
+	qname_len++;
 	query->dns_question.qname_len = qname_len;
 	memcpy(query->dns_question.qname, temp, qname_len);
 
