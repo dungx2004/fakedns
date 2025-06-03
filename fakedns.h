@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #define MAX_IFNAME_LEN 32
-#define FAKE_IP "42.112.27.54"
+#define FAKE_IP "2404:6800:4005:814::200e"
 #define PATH_TO_LOG "fakedns.log"
 
 #define ETH_HEADER_LEN 14

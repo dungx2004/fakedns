@@ -1,3 +1,4 @@
+#include <pcap/pcap.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,7 +33,7 @@ void create_answer_rr(unsigned char *answer_rr) {
 	idx += 2;
 
 	// RR TYPE: A
-	uint16_t ans_type = htons(0x0001);
+	uint16_t ans_type = htons(0x001c);
 	memcpy(&answer_rr[idx], &ans_type, 2);
 	idx += 2;
 
@@ -52,9 +53,9 @@ void create_answer_rr(unsigned char *answer_rr) {
 	idx += 2;
 
 	// RDATA
-	uint32_t ans_ip;
-	inet_pton(AF_INET, FAKE_IP, &ans_ip);
-	memcpy(&answer_rr[idx], &ans_ip, 4);
+	uint8_t ans_ip[16];
+	inet_pton(AF_INET6, FAKE_IP, ans_ip);
+	memcpy(&answer_rr[idx], ans_ip, 16);
 }
 
 int create_payload(const struct dns_query *query, unsigned char *dns_payload, unsigned char *answer_rr) {
@@ -76,8 +77,8 @@ int create_payload(const struct dns_query *query, unsigned char *dns_payload, un
 	payload_idx += 4;
 
 	// DNS answer RR
-	memcpy(&(dns_payload[payload_idx]), answer_rr, 16);
-	payload_idx += 16;
+	memcpy(&(dns_payload[payload_idx]), answer_rr, 28);
+	payload_idx += 28;
 	return payload_idx;
 }
 
@@ -199,7 +200,7 @@ int capture_response(struct capture_response_args *args) {
 
 	pcap_t *handle;
 	struct bpf_program fp;
-	char filter[] = "ip";
+	char filter[] = "udp dst port 53 and udp[10] & 0x80 == 0";
 	bpf_u_int32 ip;
 	bpf_u_int32 mask;
 
@@ -210,9 +211,17 @@ int capture_response(struct capture_response_args *args) {
 	}
 
 	// Chuẩn bị live capture
-	handle = pcap_open_live(interface, MAX_PACKET_LEN, 1, 1000, NULL);
+	handle = pcap_create(interface, NULL);
 	if (!handle) {
-		printf("Capture: Failed to open interface for live capture\n");
+		printf("Capture: Failed to create pcap handle\n");
+		return -1;
+	}
+	pcap_set_immediate_mode(handle, 1);
+	pcap_set_snaplen(handle, MAX_PACKET_LEN);
+	pcap_set_promisc(handle, 1);
+	if (pcap_activate(handle) != 0) {
+		printf("Capture: Failed to activate pcap handle\n");
+		pcap_close(handle);
 		return -1;
 	}
 
