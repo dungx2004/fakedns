@@ -4,7 +4,7 @@
 #include "fakedns.h"
 
 struct config_qname {
-	unsigned char qname[MAX_QNAME_LEN];
+	unsigned char qname[MAX_DNS_QNAME_LEN];
 	struct config_qname *next;
 };
 

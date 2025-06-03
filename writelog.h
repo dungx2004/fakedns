@@ -4,7 +4,7 @@
 #include "queue.h"
 
 struct writelog_args {
-	queue_t *response_writelog;
+	queue_t *queue;
 	char *path_to_log_file;
 };
 

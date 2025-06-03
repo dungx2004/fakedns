@@ -8,12 +8,12 @@
 
 
 void qname_to_dname(unsigned char *qname, char *dname) {
-	memset(dname, 0, MAX_QNAME_LEN);
+	memset(dname, 0, MAX_DNS_QNAME_LEN);
 	int label_len = 0, i = 0;
-	while (qname[i] != 0 && i < MAX_QNAME_LEN) {
+	while (qname[i] != 0 && i < MAX_DNS_QNAME_LEN) {
 		label_len = qname[i];
 		i++;
-		strncat(dname, &(qname[i]), label_len);
+		strncat(dname, (char *)(&(qname[i])), label_len);
 		strcat(dname, ".");
 		i += label_len;
 	}
@@ -21,19 +21,19 @@ void qname_to_dname(unsigned char *qname, char *dname) {
 }
 
 int write_log(struct writelog_args *args) {
-	queue_t *response_writelog = args->response_writelog;
+	queue_t *response_writelog = args->queue;
 
 	struct dns_query query;
 
 	char src_ip[INET_ADDRSTRLEN], dest_ip[INET_ADDRSTRLEN];
 	int src_port, dest_port;
-	char domain_name[MAX_QNAME_LEN];
+	char domain_name[MAX_DNS_QNAME_LEN];
 
 	time_t current_time;
 	struct tm *local_time;
 	char time_str[20];
 
-	FILE *logfile = fopen(PATH_TO_LOG, "a");
+	FILE *logfile = fopen(args->path_to_log_file, "a");
 	if (!logfile) {
 		printf("Write log: Failed to open log file\n");
 		return -1;
@@ -51,7 +51,7 @@ int write_log(struct writelog_args *args) {
 
 		// Số hiệu cổng
 		src_port = ntohs(query.port_src);
-		dest_port = ntohs(53);
+		dest_port = 53;
 
 		// Tên miền
 		qname_to_dname(query.qname, domain_name);
@@ -63,6 +63,7 @@ int write_log(struct writelog_args *args) {
 
 		fprintf(logfile, "[%s] Query %s from %s port %d to %s port %d\n",
 			time_str, domain_name, src_ip, src_port, dest_ip, dest_port);
+		fflush(logfile);
 	}
 
 	return 0;

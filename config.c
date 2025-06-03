@@ -5,7 +5,7 @@
 
 // Convert domain name dạng người đọc sang dạng QNAME
 void dname_to_qname(char *dname, unsigned char *qname) {
-	memset(qname, 0, MAX_QNAME_LEN);
+	memset(qname, 0, MAX_DNS_QNAME_LEN);
 	char label_len[2] = {'\0', '\0'};
 
 	char *label = strtok(dname, ".");
@@ -20,7 +20,7 @@ void dname_to_qname(char *dname, unsigned char *qname) {
 // Đọc file config
 // Trả về -1 nếu gặp lỗi, 0 nếu đọc thành công
 int read_config(char *path_to_config_file, struct config *conf) {
-	char buffer[MAX_QNAME_LEN];
+	char buffer[MAX_DNS_QNAME_LEN];
 	int buf_len;
 
 	FILE *file = fopen(path_to_config_file, "r");
@@ -39,7 +39,7 @@ int read_config(char *path_to_config_file, struct config *conf) {
 	}
 	printf("%s\n", conf->interface);
 	// Đọc domain name
-	while (fgets(buffer, MAX_QNAME_LEN, file) != NULL) {
+	while (fgets(buffer, MAX_DNS_QNAME_LEN, file) != NULL) {
 		buffer[strcspn(buffer, "\n")] = '\0';
 		struct config_qname *qname_in_blacklist = (struct config_qname *)malloc(sizeof(struct config_qname));
 		
