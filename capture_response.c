@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdint.h>
 
+#include <netinet/ether.h>
 #include <netinet/ip.h>
 #include <netinet/udp.h>
 
@@ -33,7 +34,7 @@ void create_answer_rr(unsigned char *answer_rr) {
 	idx += 2;
 
 	// RR TYPE: A
-	uint16_t ans_type = htons(0x001c);
+	uint16_t ans_type = htons(0x0001);
 	memcpy(&answer_rr[idx], &ans_type, 2);
 	idx += 2;
 
@@ -48,14 +49,14 @@ void create_answer_rr(unsigned char *answer_rr) {
 	idx += 4;
 
 	// RDATA length
-	uint16_t ans_data_len = htons(4);
+	uint16_t ans_data_len = htons(IP4_LEN);
 	memcpy(&answer_rr[idx], &ans_data_len, 2);
 	idx += 2;
 
 	// RDATA
-	uint8_t ans_ip[16];
-	inet_pton(AF_INET6, FAKE_IP, ans_ip);
-	memcpy(&answer_rr[idx], ans_ip, 16);
+	uint32_t ans_ip;
+	inet_pton(AF_INET, FAKE_IP4, &ans_ip);
+	memcpy(&answer_rr[idx], &ans_ip, IP4_LEN);
 }
 
 int create_payload(const struct dns_query *query, unsigned char *dns_payload, unsigned char *answer_rr) {
@@ -77,8 +78,8 @@ int create_payload(const struct dns_query *query, unsigned char *dns_payload, un
 	payload_idx += 4;
 
 	// DNS answer RR
-	memcpy(&(dns_payload[payload_idx]), answer_rr, 28);
-	payload_idx += 28;
+	memcpy(&(dns_payload[payload_idx]), answer_rr, ANSRR_IP4_LEN);
+	payload_idx += ANSRR_IP4_LEN;
 	return payload_idx;
 }
 
@@ -118,21 +119,34 @@ void inject_response(libnet_t *libnet, const struct dns_query *query, unsigned c
 		return;
 	}
 
+	// Ethernet header
+	libnet_ptag_t eth_tag = libnet_build_ethernet(query->mac_src, query->mac_dest, ETHERTYPE_IP, NULL, 0, libnet, 0);
+	if (eth_tag == -1) {
+		printf("Inject response: Failed to build Ethernet header\n");
+		return;
+	}
+
 	int packet_len = libnet_write(libnet);
 	if (packet_len == -1) {
 		printf("Inject response: Failed to write libnet\n");
 		return;
 	}
-	printf("Inject successfull\n");
+	printf("Inject\n");
 	libnet_clear_packet(libnet);
 }
 
 void packet_handler(unsigned char *user_data, const struct pcap_pkthdr *pkthdr,
 			const unsigned char *packet) {
-	struct dns_query *query = ((struct packet_handler_args *)user_data)->query;
+	struct packet_handler_args *args = (struct packet_handler_args *)user_data;
+	struct dns_query *query = args->query;
 	
 	const unsigned char *temp = packet;
 	const unsigned char *packet_limit = packet + pkthdr->caplen;
+
+	// Ethernet header
+	struct ethhdr *eth_header = (struct ethhdr *)temp;
+	memcpy(query->mac_src, eth_header->h_source, 6);
+	memcpy(query->mac_dest, eth_header->h_dest, 6);
 
 	// IP header
 	temp = packet + ETH_HEADER_LEN;
@@ -184,15 +198,13 @@ void packet_handler(unsigned char *user_data, const struct pcap_pkthdr *pkthdr,
 	memcpy(&(query->qtype_qclass), temp, 4);
 
 	// Fake response if necessary
-	if (is_invalid_query(query, ((struct packet_handler_args *)user_data)->blacklist)) {
-		inject_response(((struct packet_handler_args *)user_data)->libnet,
-				query,
-				((struct packet_handler_args *)user_data)->answer_rr);
+	if (is_invalid_query(query, args->blacklist)) {
+		inject_response(args->libnet, query, args->answer_rr);
 	}
 
 	// Push vào queue
-	queue_push(((struct packet_handler_args *)user_data)->queue, query);
-	printf("Capture successfully %s\n", query->qname);
+	queue_push(args->queue, query);
+	printf("Capture\n", query->qname);
 }
 
 int capture_response(struct capture_response_args *args) {
@@ -246,7 +258,7 @@ int capture_response(struct capture_response_args *args) {
 	}
 
 	// Khởi tạo libnet
-	libnet_t *libnet = libnet_init(LIBNET_RAW4, interface, NULL);
+	libnet_t *libnet = libnet_init(LIBNET_LINK, interface, NULL);
 	if (!libnet) {
 		printf("Capture_response: Failed to init libnet\n", NULL);
 		return -1;

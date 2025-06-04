@@ -65,6 +65,6 @@ int main(int argc, char *argv[]) {
 	// Đóng các queue
 	queue_free(queue);
 
-	// Đóng file config
+	// Xoá struct config
 	free_conf(conf);
 }
