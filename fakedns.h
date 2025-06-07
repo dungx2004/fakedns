@@ -15,7 +15,6 @@
 #define IP6_LEN 16
 #define ANSRR_IP6_LEN 28
 
-
 #define MAX_PACKET_LEN 512
 
 #define ETH_HEADER_LEN 14
@@ -24,7 +23,8 @@
 #define DNS_HEADER_LEN 12
 
 #define MAX_DNS_PAYLOAD_LEN 418 // = max packet len - các header len
-#define MAX_DNS_QNAME_LEN 128
+#define MAX_DNS_QNAME_LEN 384 // 386 = max payload len - 4 byte qtypeqclass - max(28, 16) byte answer rr
+			      // lấy 384 = 128 * 3
 
 
 struct dns_query {

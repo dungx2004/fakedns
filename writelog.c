@@ -66,9 +66,15 @@ int write_log(struct writelog_args *args) {
 		int offset_minutes = (offset % 3600) / 60;
 		char offset_sign = (offset >= 0) ? '+' : '-';
 
-		fprintf(logfile, "[%s %c%02d:%02d] Query %s from %s:%d to %s:%d\n",
-			time_str, offset_sign, offset_hours, offset_minutes,
-			domain_name, src_ip, src_port, dest_ip, dest_port);
+		if (offset_minutes == 0) {
+			fprintf(logfile, "[%s %c%02d] Query %s from %s:%d to %s:%d\n",
+				time_str, offset_sign, offset_hours,
+				domain_name, src_ip, src_port, dest_ip, dest_port);
+		} else {
+			fprintf(logfile, "[%s %c%02d:%02d] Query %s from %s:%d to %s:%d\n",
+				time_str, offset_sign, offset_hours, offset_minutes,
+				domain_name, src_ip, src_port, dest_ip, dest_port);
+		}
 		fflush(logfile);
 	}
 

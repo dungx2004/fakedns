@@ -131,7 +131,6 @@ void inject_response(libnet_t *libnet, const struct dns_query *query, unsigned c
 		printf("Inject response: Failed to write libnet\n");
 		return;
 	}
-	printf("Inject\n");
 	libnet_clear_packet(libnet);
 }
 
@@ -152,34 +151,34 @@ void packet_handler(unsigned char *user_data, const struct pcap_pkthdr *pkthdr,
 	temp = packet + ETH_HEADER_LEN;
 	struct iphdr *ip_header = (struct iphdr *)temp;
 	size_t ip_header_len = ip_header->ihl * 4;
-	if (temp + ip_header_len > packet_limit) {
-		return;
-	}
-	if (ip_header->protocol != IPPROTO_UDP) {
-		return;
-	}
+	//if (temp + ip_header_len > packet_limit) {
+	//	return;
+	//}
+	//if (ip_header->protocol != IPPROTO_UDP) {
+	//	return;
+	//}
 	query->ip_src = ip_header->saddr;
 	query->ip_dest = ip_header->daddr;
 
 	// UDP header
 	temp += ip_header_len;
-	if (temp + UDP_HEADER_LEN > packet_limit) {
-		return;
-	}
+	//if (temp + UDP_HEADER_LEN > packet_limit) {
+	//	return;
+	//}
 	struct udphdr *udp_header = (struct udphdr *)temp;
-	if (ntohs(udp_header->dest) != 53) {
-		return;
-	}
+	//if (ntohs(udp_header->dest) != 53) {
+	//	return;
+	//}
 	query->port_src = udp_header->source;
 
 	// DNS header
 	temp += UDP_HEADER_LEN;
-	if (temp + DNS_HEADER_LEN > packet_limit) {
-		return;
-	}
-	if (ntohs(*((uint16_t *)(temp + 2))) & 0x8000) { // 0x8000 = 1000 0000 0000 0000 nhị phân
-		return;
-	}
+	//if (temp + DNS_HEADER_LEN > packet_limit) {
+	//	return;
+	//}
+	//if (ntohs(*((uint16_t *)(temp + 2))) & 0x8000) { // 0x8000 = 1000 0000 0000 0000 nhị phân
+	//	return;
+	//}
 	query->dns_id = *((uint16_t *)temp);
 
 	// DNS qname
@@ -204,7 +203,6 @@ void packet_handler(unsigned char *user_data, const struct pcap_pkthdr *pkthdr,
 
 	// Push vào queue
 	queue_push(args->queue, query);
-	printf("Capture\n", query->qname);
 }
 
 int capture_response(struct capture_response_args *args) {

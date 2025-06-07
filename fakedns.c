@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
 
 	// Bắt đầu 2 thread: capture_response() và writelog()
 	pthread_t thread_capture_response, thread_writelog;
-	// capture and response
+	// capture_response
 	struct capture_response_args *capture_response_arg = (struct capture_response_args *)malloc(sizeof(struct capture_response_args));
 	if (!capture_response_arg) {
 		printf("Failed to write capture_response_arg\n");
