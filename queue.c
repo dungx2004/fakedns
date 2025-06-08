@@ -1,3 +1,4 @@
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "queue.h"
@@ -66,5 +67,6 @@ void queue_free(queue_t *q) {
 	while (!q->head) {
 		queue_pop(q, NULL);
 	}
+	pthread_mutex_destroy(&(q->mutex));
 	free(q);
 }

@@ -17,19 +17,22 @@ void dname_to_qname(char *dname, unsigned char *qname) {
 	}
 }
 
-// Đọc file config
-// Trả về -1 nếu gặp lỗi, 0 nếu đọc thành công
-int read_config(char *path_to_config_file, struct config *conf) {
-	char buffer[MAX_DNS_QNAME_LEN];
-	int buf_len;
+struct config *config_read(char *path_to_config_file) {
+	struct config *conf = (struct config *)malloc(sizeof(struct config));
+	if (!conf) {
+		printf("Read config: Failed to init config struct\n");
+		return NULL;
+	}
 
 	FILE *file = fopen(path_to_config_file, "r");
 	if (!file) {
 		printf("Read config: Failed to open config file\n");
-		return -1;
+		free(conf);
+		return NULL;
 	}
 
 	// Đọc tên interface
+	char buffer[MAX_DNS_QNAME_LEN]; // vì MAX_DNS_QNAME_LEN > MAX_IFNAME_LEN
 	rewind(file);
 	if (fgets(buffer, MAX_IFNAME_LEN, file) != NULL) {
 		buffer[strcspn(buffer, "\n")] = '\0';
@@ -37,8 +40,8 @@ int read_config(char *path_to_config_file, struct config *conf) {
 	} else {
 		printf("Read config: Failed to read interface name\n");
 	}
-	printf("%s\n", conf->interface);
-	// Đọc domain name
+
+	// Đọc các domain name
 	while (fgets(buffer, MAX_DNS_QNAME_LEN, file) != NULL) {
 		buffer[strcspn(buffer, "\n")] = '\0';
 		struct config_qname *qname_in_blacklist = (struct config_qname *)malloc(sizeof(struct config_qname));
@@ -48,11 +51,11 @@ int read_config(char *path_to_config_file, struct config *conf) {
 		conf->blacklist = qname_in_blacklist;
 	}
 
-	return 0;
+	return conf;
 }
 
 // Xoá cấu trúc config
-void free_conf(struct config *conf) {
+void config_free(struct config *conf) {
 	struct config_qname *temp;
 	while (conf->blacklist != NULL) {
 		temp = conf->blacklist;

@@ -1,4 +1,5 @@
 #include <pcap/pcap.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,6 +15,15 @@
 #include "fakedns.h"
 #include "queue.h"
 #include "capture_response.h"
+
+struct packet_handler_args {
+	struct config_qname *blacklist;
+	queue_t *queue;
+	libnet_t *libnet;
+	unsigned char *answer_rr;
+	struct dns_query *query;
+	pcap_t *handle;
+};
 
 int is_invalid_query(const struct dns_query *query, struct config_qname *blacklist) {
 	struct config_qname *temp = blacklist;
@@ -203,14 +213,18 @@ void packet_handler(unsigned char *user_data, const struct pcap_pkthdr *pkthdr,
 
 	// Push vào queue
 	queue_push(args->queue, query);
+
+	// Kiểm tra flag
+	pthread_mutex_lock(&g_mutex);
+	if (g_flag != 1) {
+		pcap_breakloop(args->handle);
+	}
+	pthread_mutex_unlock(&g_mutex);
 }
 
 int capture_response(struct capture_response_args *args) {
 	char *interface = args->conf->interface;
 
-	pcap_t *handle;
-	struct bpf_program fp;
-	char filter[] = "udp dst port 53 and udp[10] & 0x80 == 0";
 	bpf_u_int32 ip;
 	bpf_u_int32 mask;
 
@@ -221,7 +235,7 @@ int capture_response(struct capture_response_args *args) {
 	}
 
 	// Chuẩn bị live capture
-	handle = pcap_create(interface, NULL);
+	pcap_t *handle = pcap_create(interface, NULL);
 	if (!handle) {
 		printf("Capture: Failed to create pcap handle\n");
 		return -1;
@@ -243,6 +257,9 @@ int capture_response(struct capture_response_args *args) {
 	}
 
 	// Lọc các gói không dùng IP
+	struct bpf_program fp;
+	char filter[] = "udp dst port 53 and udp[10] & 0x80 == 0";
+
 	if (pcap_compile(handle, &fp, filter, 0, mask) == -1) {
 		printf("Capture: Failed to compile filter expression \n");
 		pcap_close(handle);
@@ -272,7 +289,8 @@ int capture_response(struct capture_response_args *args) {
 		.queue = args->queue,
 		.libnet = libnet,
 		.answer_rr = answer_rr,
-		.query = &query
+		.query = &query,
+		.handle = handle
 	};
 
 	printf("Start capture and response\n");
@@ -282,6 +300,7 @@ int capture_response(struct capture_response_args *args) {
 	pcap_freecode(&fp);
 	pcap_close(handle);
 	libnet_destroy(libnet);
+	free(args);
 
 	return 0;
 }

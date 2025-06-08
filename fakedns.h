@@ -1,11 +1,12 @@
 #ifndef FAKEDNS_H
 #define FAKEDNS_H
 
+#include <pthread.h>
 #include <stdlib.h>
 #include <stdint.h>
 
 #define MAX_IFNAME_LEN 32
-#define PATH_TO_LOG "fakedns.log"
+#define PATH_TO_LOG "/tmp/log.fdns"
 
 #define FAKE_IP4 "127.0.0.1"
 #define IP4_LEN 4
@@ -23,8 +24,7 @@
 #define DNS_HEADER_LEN 12
 
 #define MAX_DNS_PAYLOAD_LEN 418 // = max packet len - các header len
-#define MAX_DNS_QNAME_LEN 384 // 386 = max payload len - 4 byte qtypeqclass - max(28, 16) byte answer rr
-			      // lấy 384 = 128 * 3
+#define MAX_DNS_QNAME_LEN 386 // = max payload len - 4 byte qtypeqclass - max(28, 16) byte answer rr
 
 
 struct dns_query {
@@ -38,4 +38,7 @@ struct dns_query {
 	size_t qname_len;
 	uint32_t qtype_qclass;
 };
+
+extern pthread_mutex_t g_mutex;
+extern int g_flag;
 #endif

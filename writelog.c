@@ -1,3 +1,4 @@
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -41,8 +42,15 @@ int write_log(struct writelog_args *args) {
 
 	printf("Start write log\n");
 	while (1) {
-		if (queue_pop(response_writelog, &query)) {
-			continue;
+		if (queue_pop(response_writelog, &query)) { // Check if queue is empty
+			pthread_mutex_lock(&g_mutex);
+			if (g_flag) {
+				pthread_mutex_unlock(&g_mutex);
+				continue;
+			} else {
+				pthread_mutex_unlock(&g_mutex);
+				break;
+			}
 		}
 
 		// Địa chỉ IP
@@ -77,6 +85,9 @@ int write_log(struct writelog_args *args) {
 		}
 		fflush(logfile);
 	}
+	
+	fclose(logfile);
+	free(args);
 
 	return 0;
 }
