@@ -1,7 +1,9 @@
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
-#include <signal.h>
 #include <pthread.h>
 
 #include "fakedns.h"
@@ -47,7 +49,7 @@ int start_fakedns(char *path_to_conf, char *path_to_log, struct fakedns_args *fa
 	capture_response_arg->conf = fakedns->conf;
 	capture_response_arg->queue = fakedns->queue;
 
-	if (pthread_create(&(fakedns->thread_capture_response), NULL, (void *)capture_response, capture_response_arg) != 0) {
+	if (pthread_create(&(fakedns->thread_capture_response), NULL, (void *)capture_response, capture_response_arg)) {
 		printf("Failed to start capture and response\n");
 		return -1;
 	}
@@ -61,7 +63,7 @@ int start_fakedns(char *path_to_conf, char *path_to_log, struct fakedns_args *fa
 	writelog_arg->queue = fakedns->queue;
 	writelog_arg->path_to_log_file = path_to_log;
 	
-	if (pthread_create(&(fakedns->thread_writelog), NULL, (void *)write_log, writelog_arg) != 0) {
+	if (pthread_create(&(fakedns->thread_writelog), NULL, (void *)write_log, writelog_arg)) {
 		printf("Failed to start write log\n");
 		free(writelog_arg);
 		return -1;
@@ -109,15 +111,110 @@ int reload_config_fakedns(char *path_to_conf, struct fakedns_args *fakedns) {
 	g_flag = 1;
 	pthread_mutex_unlock(&g_mutex);
 
-	if (pthread_create(&(fakedns->thread_capture_response), NULL, (void *)capture_response, capture_response_arg) != 0) {
+	if (pthread_create(&(fakedns->thread_capture_response), NULL, (void *)capture_response, capture_response_arg)) {
 		printf("Failed to start capture and response\n");
 		free(capture_response_arg);
 		return -1;
 	}
-	printf("Reload successfully\n");
+	return 0;
+}
+
+int fakedns_daemon() {
+	if (mkfifo(FIFO_PATH, 0666) == -1) {
+		return -1;
+	}
+
+	int fd = open(FIFO_PATH, O_RDONLY | O_NONBLOCK);
+	if (fd == -1) {
+		return -1;
+	}
+
+	struct fakedns_args fakedns;
+	if (start_fakedns(DEFAULT_PATH_TO_CONF, DEFAULT_PATH_TO_LOG, &fakedns) == -1) {
+		return -1;
+	}
+
+	char buffer[128];
+	while (1) {
+		ssize_t n = read(fd, buffer, sizeof(buffer)-1);
+		if (n > 0) {
+			buffer[n] = '\0';
+		}
+
+		if (!strcmp(buffer, "reload")) {
+			reload_config_fakedns(DEFAULT_PATH_TO_CONF, &fakedns);
+		}
+		if (!strcmp(buffer, "stop")) {
+			stop_fakedns(&fakedns);
+			break;
+		}
+	}
+
+	close(fd);
+	unlink(FIFO_PATH);
 	return 0;
 }
 
 int main(int argc, char *argv[]) {
-	
+	if (geteuid() != 0) {
+		printf("Sudo, please!\n");
+		return -1;
+	}
+
+	if (argc != 2) {
+		goto end;
+	}
+
+	if (!strcmp(argv[1], "start")) {
+		if (!access(FIFO_PATH, F_OK)) {
+			printf("Daemon already running\n");
+			printf("Try stop then restart\n");
+			return -1;
+		}
+		pid_t pid = fork();
+		if (pid < 0) {
+			printf("Failed to start daemon\n");
+			return -1;
+		}
+		if (pid > 0) return 0;
+		return fakedns_daemon();
+	}
+
+	if (!strcmp(argv[1], "reload")) {
+		if (access(FIFO_PATH, F_OK)) {
+			printf("No daemon running\n");
+			return -1;
+		}
+
+		int fd = open(FIFO_PATH, O_WRONLY);
+		if (fd == -1) {
+			printf("Failed to connect to the running daemon\n");
+			return -1;
+		}
+		const char *msg = "reload";
+		write(fd, msg, strlen(msg));
+		close(fd);
+		return 0;
+	}
+
+	if (!strcmp(argv[1], "stop")) {
+		if (access(FIFO_PATH, F_OK)) {
+			printf("No daemon running\n");
+			return -1;
+		}
+		int fd = open(FIFO_PATH, O_WRONLY | O_NONBLOCK);
+		if (fd == -1) {
+			printf("Failed to connect to the running daemon\n");
+			return -1;
+		}
+		const char *msg = "stop";
+		write(fd, msg, strlen(msg));
+		close(fd);
+	}
+
+end:
+	printf("Wrong usage!\n");
+	printf("Usage: sudo fakedns <command>\n");
+	printf("Commands: start, stop, reload\n");
+	return 0;
 }

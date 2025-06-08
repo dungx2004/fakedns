@@ -6,7 +6,9 @@
 #include <stdint.h>
 
 #define MAX_IFNAME_LEN 32
-#define PATH_TO_LOG "/tmp/log.fdns"
+#define FIFO_PATH "/tmp/fakedns_fifo"
+#define DEFAULT_PATH_TO_CONF "/etc/fakedns/default.conf"
+#define DEFAULT_PATH_TO_LOG "/tmp/fakedns.log"
 
 #define FAKE_IP4 "127.0.0.1"
 #define IP4_LEN 4
