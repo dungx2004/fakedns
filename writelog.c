@@ -40,7 +40,6 @@ int write_log(struct writelog_args *args) {
 		return -1;
 	}
 
-	printf("Start write log\n");
 	while (1) {
 		if (queue_pop(response_writelog, &query)) { // Check if queue is empty
 			pthread_mutex_lock(&g_mutex);

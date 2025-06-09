@@ -28,7 +28,7 @@ struct packet_handler_args {
 int is_invalid_query(const struct dns_query *query, struct config_qname *blacklist) {
 	struct config_qname *temp = blacklist;
 	while (temp != NULL) {
-		if (!strncmp((char *)query->qname, (char *)temp->qname, MAX_DNS_QNAME_LEN)) {
+		if (strstr((char *)query->qname, (char *)temp->qname)) {
 			return 1;
 		}
 		temp = temp->next;
