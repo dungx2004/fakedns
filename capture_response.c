@@ -213,13 +213,6 @@ void packet_handler(unsigned char *user_data, const struct pcap_pkthdr *pkthdr,
 
 	// Push vào queue
 	queue_push(args->queue, query);
-
-	// Kiểm tra flag
-	pthread_mutex_lock(&g_mutex);
-	if (g_flag != 1) {
-		pcap_breakloop(args->handle);
-	}
-	pthread_mutex_unlock(&g_mutex);
 }
 
 int capture_response(struct capture_response_args *args) {
@@ -235,7 +228,7 @@ int capture_response(struct capture_response_args *args) {
 	}
 
 	// Chuẩn bị live capture
-	pcap_t *handle = pcap_create(interface, NULL);
+	pcap_t *handle = args->handle;
 	if (!handle) {
 		printf("Capture: Failed to create pcap handle\n");
 		return -1;
@@ -295,7 +288,7 @@ int capture_response(struct capture_response_args *args) {
 
 	printf("Start capture and response\n");
 	pcap_loop(handle, -1, packet_handler, (unsigned char *)(&packet_handler_arg));
-
+	
 	// Dọn dẹp
 	pcap_freecode(&fp);
 	pcap_close(handle);

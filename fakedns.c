@@ -1,10 +1,14 @@
 #include <fcntl.h>
+#include <pcap/pcap.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <pcap.h>
 
 #include "fakedns.h"
 #include "config.h"
@@ -13,13 +17,14 @@
 #include "writelog.h"
 
 pthread_mutex_t g_mutex = PTHREAD_MUTEX_INITIALIZER;
-int g_flag; // flag = 0 là dừng, flag = 1 là chạy, flag = 2 là tải lại config
+int g_flag; // flag = 0 là dừng, flag = 1 là chạy
 
 struct fakedns_args {
 	struct config *conf;
 	queue_t *queue;
 	pthread_t thread_capture_response;
 	pthread_t thread_writelog;
+	pcap_t *handle;
 };
 
 
@@ -38,6 +43,12 @@ int start_fakedns(char *path_to_conf, char *path_to_log, struct fakedns_args *fa
 		return -1;
 	}
 
+	fakedns->handle = pcap_create(fakedns->conf->interface, NULL);
+	if (!(fakedns->handle)) {
+		printf("Failed to open pcap\n");
+		return -1;
+	}
+
 	// Bắt đầu chương trình
 	g_flag = 1;
 	// capture_response()
@@ -48,6 +59,7 @@ int start_fakedns(char *path_to_conf, char *path_to_log, struct fakedns_args *fa
 	}
 	capture_response_arg->conf = fakedns->conf;
 	capture_response_arg->queue = fakedns->queue;
+	capture_response_arg->handle = fakedns->handle;
 
 	if (pthread_create(&(fakedns->thread_capture_response), NULL, (void *)capture_response, capture_response_arg)) {
 		printf("Failed to start capture and response\n");
@@ -76,6 +88,7 @@ void stop_fakedns(struct fakedns_args *fakedns) {
 	g_flag = 0;
 	pthread_mutex_unlock(&g_mutex);
 
+	pcap_breakloop(fakedns->handle);
 	pthread_join(fakedns->thread_capture_response, NULL);
 	pthread_join(fakedns->thread_writelog, NULL);
 
@@ -90,14 +103,17 @@ int reload_config_fakedns(char *path_to_conf, struct fakedns_args *fakedns) {
 		return 1;
 	}
 
-	pthread_mutex_lock(&g_mutex);
-	g_flag = 2;
-	pthread_mutex_unlock(&g_mutex);
-
+	pcap_breakloop(fakedns->handle);
 	pthread_join(fakedns->thread_capture_response, NULL);
 
 	config_free(fakedns->conf);
 	fakedns->conf = new_config;
+
+	fakedns->handle = pcap_create(fakedns->conf->interface, NULL);
+	if (!(fakedns->handle)) {
+		printf("Failed to open pcap\n");
+		return -1;
+	}
 
 	struct capture_response_args *capture_response_arg = (struct capture_response_args *)malloc(sizeof(struct capture_response_args));
 	if (!capture_response_arg) {
@@ -106,10 +122,7 @@ int reload_config_fakedns(char *path_to_conf, struct fakedns_args *fakedns) {
 	}
 	capture_response_arg->conf = fakedns->conf;
 	capture_response_arg->queue = fakedns->queue;
-
-	pthread_mutex_lock(&g_mutex);
-	g_flag = 1;
-	pthread_mutex_unlock(&g_mutex);
+	capture_response_arg->handle = fakedns->handle;
 
 	if (pthread_create(&(fakedns->thread_capture_response), NULL, (void *)capture_response, capture_response_arg)) {
 		printf("Failed to start capture and response\n");
@@ -119,39 +132,59 @@ int reload_config_fakedns(char *path_to_conf, struct fakedns_args *fakedns) {
 	return 0;
 }
 
-int fakedns_daemon() {
-	if (mkfifo(FIFO_PATH, 0666) == -1) {
+int fakedns_daemon_sock() {
+	int sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
+	if (sockfd == -1) {
 		return -1;
 	}
 
-	int fd = open(FIFO_PATH, O_RDONLY | O_NONBLOCK);
-	if (fd == -1) {
+	struct sockaddr_un daemon_sock;
+	memset(&daemon_sock, 0, sizeof(daemon_sock));
+	daemon_sock.sun_family = AF_UNIX;
+	strncpy(daemon_sock.sun_path, SOCKET_PATH, sizeof(daemon_sock.sun_path));
+
+	if (bind(sockfd, (struct sockaddr *)(&daemon_sock), sizeof(daemon_sock)) == -1) {
+		close(sockfd);
+		return -1;
+	}
+
+	if (listen(sockfd, 5)) {
+		close(sockfd);
 		return -1;
 	}
 
 	struct fakedns_args fakedns;
-	if (start_fakedns(DEFAULT_PATH_TO_CONF, DEFAULT_PATH_TO_LOG, &fakedns) == -1) {
+	if (start_fakedns(DEFAULT_PATH_TO_CONF, DEFAULT_PATH_TO_LOG, &fakedns)) {
+		close(sockfd);
 		return -1;
 	}
 
-	char buffer[128];
 	while (1) {
-		ssize_t n = read(fd, buffer, sizeof(buffer)-1);
-		if (n > 0) {
-			buffer[n] = '\0';
+		struct sockaddr_un client_sock;
+		socklen_t client_socklen = sizeof(struct sockaddr_storage);
+		char buffer[128];
+		int client_fd = accept(sockfd, (struct sockaddr *)&client_sock, &client_socklen);
+		if (client_fd == -1) {
+			continue;
 		}
+
+		int msg_len = recv(client_fd, buffer, 128, 0);
+		buffer[msg_len] = '\0';
 
 		if (!strcmp(buffer, "reload")) {
 			reload_config_fakedns(DEFAULT_PATH_TO_CONF, &fakedns);
 		}
+
 		if (!strcmp(buffer, "stop")) {
 			stop_fakedns(&fakedns);
+			close(client_fd);
 			break;
 		}
+		close(client_fd);
 	}
 
-	close(fd);
-	unlink(FIFO_PATH);
+	unlink(SOCKET_PATH);
+	close(sockfd);
 	return 0;
 }
 
@@ -166,7 +199,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (!strcmp(argv[1], "start")) {
-		if (!access(FIFO_PATH, F_OK)) {
+		if (!access(SOCKET_PATH, F_OK)) {
 			printf("Daemon already running\n");
 			printf("Try stop then restart\n");
 			return -1;
@@ -177,39 +210,38 @@ int main(int argc, char *argv[]) {
 			return -1;
 		}
 		if (pid > 0) return 0;
-		return fakedns_daemon();
+		return fakedns_daemon_sock();
 	}
 
-	if (!strcmp(argv[1], "reload")) {
-		if (access(FIFO_PATH, F_OK)) {
+	if (!strcmp(argv[1], "reload") || !strcmp(argv[1], "stop")) {
+		if (access(SOCKET_PATH, F_OK)) {
 			printf("No daemon running\n");
 			return -1;
 		}
-
-		int fd = open(FIFO_PATH, O_WRONLY);
-		if (fd == -1) {
-			printf("Failed to connect to the running daemon\n");
+		
+		int sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
+		if (sockfd == -1) {
+			printf("Failed to create client socket\n");
 			return -1;
 		}
-		const char *msg = "reload";
-		write(fd, msg, strlen(msg));
-		close(fd);
+
+		struct sockaddr_un daemon_sock;
+		memset(&daemon_sock, 0, sizeof(daemon_sock));
+		daemon_sock.sun_family = AF_UNIX;
+		strncpy(daemon_sock.sun_path, SOCKET_PATH, sizeof(daemon_sock.sun_path) - 1);
+
+		if (connect(sockfd, (struct sockaddr *)(&daemon_sock), sizeof(daemon_sock)) == -1) {
+			printf("Failed to connect to the daemon\n");
+			close(sockfd);
+			return -1;
+		}
+
+		if (send(sockfd, argv[1], strlen(argv[1]), 0) == -1) {
+			printf("Failed to write to socket\n");
+		}
+		close(sockfd);
+
 		return 0;
-	}
-
-	if (!strcmp(argv[1], "stop")) {
-		if (access(FIFO_PATH, F_OK)) {
-			printf("No daemon running\n");
-			return -1;
-		}
-		int fd = open(FIFO_PATH, O_WRONLY | O_NONBLOCK);
-		if (fd == -1) {
-			printf("Failed to connect to the running daemon\n");
-			return -1;
-		}
-		const char *msg = "stop";
-		write(fd, msg, strlen(msg));
-		close(fd);
 	}
 
 end:

@@ -64,7 +64,7 @@ int queue_pop(queue_t *q, struct dns_query *query) {
 }
 
 void queue_free(queue_t *q) {
-	while (!q->head) {
+	while (q->head) {
 		queue_pop(q, NULL);
 	}
 	pthread_mutex_destroy(&(q->mutex));

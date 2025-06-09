@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 #define MAX_IFNAME_LEN 32
-#define FIFO_PATH "/tmp/fakedns_fifo"
+#define SOCKET_PATH "/tmp/fakedns.sock"
 #define DEFAULT_PATH_TO_CONF "/etc/fakedns/default.conf"
 #define DEFAULT_PATH_TO_LOG "/tmp/fakedns.log"
 
