@@ -24,7 +24,7 @@ find_path(LIBNET_INCLUDE_DIR libnet.h
 )
 find_library(LIBNET_LIBRARY net
 	HINTS /usr/lib /usr/local/lib /opt/local/lib
-	DOC "Path to libpcap library"
+	DOC "Path to libnet library"
 )
 if (NOT LIBNET_INCLUDE_DIR OR NOT LIBNET_LIBRARY)
 	message(FATAL_ERROR "Error: Could not find libnet headers or library.")
