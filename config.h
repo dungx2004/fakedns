@@ -5,6 +5,7 @@
 
 struct config_qname {
 	unsigned char qname[MAX_DNS_QNAME_LEN];
+	size_t qname_len;
 	struct config_qname *next;
 };
 

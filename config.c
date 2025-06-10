@@ -4,9 +4,10 @@
 #include "config.h"
 
 // Convert domain name dạng người đọc sang dạng QNAME
-void dname_to_qname(char *dname, unsigned char *qname) {
+size_t dname_to_qname(char *dname, unsigned char *qname) {
 	memset(qname, 0, MAX_DNS_QNAME_LEN);
 	char label_len[2] = {'\0', '\0'};
+	size_t qname_len = 0;
 
 	char *label = strtok(dname, ".");
 	while (label != NULL) {
@@ -14,7 +15,10 @@ void dname_to_qname(char *dname, unsigned char *qname) {
 		strcat((char *)qname, label_len);
 		strcat((char *)qname, label);
 		label = strtok(NULL, ".");
+		qname_len += 1 + label_len[0];
 	}
+	qname_len++;
+	return qname_len;
 }
 
 struct config *config_read(char *path_to_config_file) {
@@ -38,6 +42,8 @@ struct config *config_read(char *path_to_config_file) {
 		buffer[strcspn(buffer, "\n")] = '\0';
 		strncpy(conf->interface, buffer, MAX_IFNAME_LEN);
 	} else {
+		free(conf);
+		fclose(file);
 		printf("Read config: Failed to read interface name\n");
 	}
 
@@ -46,7 +52,7 @@ struct config *config_read(char *path_to_config_file) {
 		buffer[strcspn(buffer, "\n")] = '\0';
 		struct config_qname *qname_in_blacklist = (struct config_qname *)malloc(sizeof(struct config_qname));
 		
-		dname_to_qname(buffer, qname_in_blacklist->qname);
+		qname_in_blacklist->qname_len = dname_to_qname(buffer, qname_in_blacklist->qname);
 		qname_in_blacklist->next = conf->blacklist;
 		conf->blacklist = qname_in_blacklist;
 	}

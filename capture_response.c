@@ -26,12 +26,15 @@ struct packet_handler_args {
 };
 
 int is_invalid_query(const struct dns_query *query, struct config_qname *blacklist) {
-	struct config_qname *temp = blacklist;
-	while (temp != NULL) {
-		if (strstr((char *)query->qname, (char *)temp->qname)) {
+	struct config_qname *invalid_qname = blacklist;
+	while (invalid_qname != NULL) {
+		// Kiểm tra qname trong blacklist có là hậu tố của qname trong query không
+		if (query->qname_len >= invalid_qname->qname_len
+			&& !strncmp((char *)(query->qname + query->qname_len - invalid_qname->qname_len),
+					(char *)invalid_qname->qname, invalid_qname->qname_len)) {
 			return 1;
 		}
-		temp = temp->next;
+		invalid_qname = invalid_qname->next;
 	}
 	return 0;
 }
@@ -286,7 +289,6 @@ int capture_response(struct capture_response_args *args) {
 		.handle = handle
 	};
 
-	printf("Start capture and response\n");
 	pcap_loop(handle, -1, packet_handler, (unsigned char *)(&packet_handler_arg));
 	
 	// Dọn dẹp
