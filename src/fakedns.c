@@ -1,12 +1,9 @@
-#include <fcntl.h>
-#include <pcap/pcap.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <unistd.h>
 #include <pthread.h>
 #include <pcap.h>
 
@@ -17,10 +14,10 @@
 #include "writelog.h"
 
 pthread_mutex_t g_mutex = PTHREAD_MUTEX_INITIALIZER;
-int g_flag; // flag = 0 là dừng, flag = 1 là chạy
+int g_flag; // flag = 0 là dừng, flag = 1 là chạy, flag = 2 là đang có lỗi
 
 struct fakedns_args {
-	struct config *conf;
+	struct config conf;
 	queue_t *queue;
 	pthread_t thread_capture_response;
 	pthread_t thread_writelog;
@@ -28,13 +25,32 @@ struct fakedns_args {
 };
 
 
-int start_fakedns(char *path_to_conf, char *path_to_log, struct fakedns_args *fakedns) {
+int start_fakedns(struct fakedns_args *fakedns) {
 	// Đọc file config
-	fakedns->conf = config_read(path_to_conf);
-	if (!(fakedns->conf)) {
+	if (config_read(&(fakedns->conf))) {
 		printf("Failed to read config\n");
 		return -1;
 	}
+
+	printf("=== DEBUG: loaded %d IP entries ===\n", fakedns->conf.ip_count);
+for (int i = 0; i < fakedns->conf.ip_count; i++) {
+    printf("  IP %s has %d blacklist domains:\n", 
+        fakedns->conf.ips[i], 
+        fakedns->conf.lists[i].qname_count);
+    for (int j = 0; j < fakedns->conf.lists[i].qname_count; j++) {
+        char dname[MAX_DNS_QNAME_LEN];
+        qname_to_dname(fakedns->conf.lists[i].qnames[j], dname);
+        printf("    - %s\n", dname);
+    }
+}
+printf("=== DEBUG: default list has %d domains ===\n",
+    fakedns->conf.default_list.qname_count);
+for (int j = 0; j < fakedns->conf.default_list.qname_count; j++) {
+    char dname[MAX_DNS_QNAME_LEN];
+    qname_to_dname(fakedns->conf.default_list.qnames[j], dname);
+    printf("    - %s\n", dname);
+}
+
 
 	// Khởi tạo hàng đợi
 	fakedns->queue = queue_init();
@@ -43,7 +59,7 @@ int start_fakedns(char *path_to_conf, char *path_to_log, struct fakedns_args *fa
 		return -1;
 	}
 
-	fakedns->handle = pcap_create(fakedns->conf->interface, NULL);
+	fakedns->handle = pcap_create(fakedns->conf.interface, NULL);
 	if (!(fakedns->handle)) {
 		printf("Failed to open pcap\n");
 		return -1;
@@ -57,7 +73,7 @@ int start_fakedns(char *path_to_conf, char *path_to_log, struct fakedns_args *fa
 		printf("Failed to write capture_response_arg\n");
 		return -1;
 	}
-	capture_response_arg->conf = fakedns->conf;
+	capture_response_arg->conf = &fakedns->conf;
 	capture_response_arg->queue = fakedns->queue;
 	capture_response_arg->handle = fakedns->handle;
 
@@ -73,7 +89,7 @@ int start_fakedns(char *path_to_conf, char *path_to_log, struct fakedns_args *fa
 		return -1;
 	}
 	writelog_arg->queue = fakedns->queue;
-	writelog_arg->path_to_log_file = path_to_log;
+	writelog_arg->path_to_log_file = fakedns->conf.logfile;
 	
 	if (pthread_create(&(fakedns->thread_writelog), NULL, (void *)write_log, writelog_arg)) {
 		printf("Failed to start write log\n");
@@ -93,49 +109,25 @@ void stop_fakedns(struct fakedns_args *fakedns) {
 	pthread_join(fakedns->thread_writelog, NULL);
 
 	queue_free(fakedns->queue);
-	config_free(fakedns->conf);
+	config_free(&fakedns->conf);
 }
 
-int reload_config_fakedns(char *path_to_conf, struct fakedns_args *fakedns) {
-	struct config *new_config = config_read(path_to_conf);
-	if (!new_config) {
-		printf("Failed to read new config\n");
-		return 1;
+int reload_config_fakedns(struct fakedns_args *fakedns) {
+	struct config new_config;
+	if (config_read(&new_config)) {
+		return -1;
 	}
 
-	pcap_breakloop(fakedns->handle);
-	pthread_join(fakedns->thread_capture_response, NULL);
-
-	config_free(fakedns->conf);
+	stop_fakedns(fakedns);
 	fakedns->conf = new_config;
 
-	fakedns->handle = pcap_create(fakedns->conf->interface, NULL);
-	if (!(fakedns->handle)) {
-		printf("Failed to open pcap\n");
-		return -1;
-	}
-
-	struct capture_response_args *capture_response_arg = (struct capture_response_args *)malloc(sizeof(struct capture_response_args));
-	if (!capture_response_arg) {
-		printf("Failed to write capture_response_arg\n");
-		return -1;
-	}
-	capture_response_arg->conf = fakedns->conf;
-	capture_response_arg->queue = fakedns->queue;
-	capture_response_arg->handle = fakedns->handle;
-
-	if (pthread_create(&(fakedns->thread_capture_response), NULL, (void *)capture_response, capture_response_arg)) {
-		printf("Failed to start capture and response\n");
-		free(capture_response_arg);
-		return -1;
-	}
-	return 0;
+	return start_fakedns(fakedns);
 }
 
-int fakedns_daemon_sock() {
+void fakedns_daemon_sock() {
 	int sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (sockfd == -1) {
-		return -1;
+		return;
 	}
 
 	struct sockaddr_un daemon_sock;
@@ -144,20 +136,18 @@ int fakedns_daemon_sock() {
 	strncpy(daemon_sock.sun_path, SOCKET_PATH, sizeof(daemon_sock.sun_path));
 
 	if (bind(sockfd, (struct sockaddr *)(&daemon_sock), sizeof(daemon_sock)) == -1) {
-		close(sockfd);
-		return -1;
+		goto end;
 	}
 
 	if (listen(sockfd, 5)) {
-		close(sockfd);
-		return -1;
+		goto end;
 	}
 
 	struct fakedns_args fakedns;
-	if (start_fakedns(DEFAULT_PATH_TO_CONF, DEFAULT_PATH_TO_LOG, &fakedns)) {
-		close(sockfd);
-		return -1;
+	if (start_fakedns(&fakedns)) {
+		goto end;
 	}
+	
 
 	while (1) {
 		struct sockaddr_un client_sock;
@@ -172,7 +162,7 @@ int fakedns_daemon_sock() {
 		buffer[msg_len] = '\0';
 
 		if (!strcmp(buffer, "reload")) {
-			reload_config_fakedns(DEFAULT_PATH_TO_CONF, &fakedns);
+			reload_config_fakedns(&fakedns);
 		}
 
 		if (!strcmp(buffer, "stop")) {
@@ -182,10 +172,9 @@ int fakedns_daemon_sock() {
 		}
 		close(client_fd);
 	}
-
+end:
 	unlink(SOCKET_PATH);
 	close(sockfd);
-	return 0;
 }
 
 int main(int argc, char *argv[]) {
@@ -204,13 +193,13 @@ int main(int argc, char *argv[]) {
 			printf("Try stop then restart\n");
 			return -1;
 		}
-		pid_t pid = fork();
-		if (pid < 0) {
-			printf("Failed to start daemon\n");
-			return -1;
-		}
-		if (pid > 0) return 0;
-		return fakedns_daemon_sock();
+			pid_t pid = fork();
+			if (pid < 0) {
+				printf("Failed to start daemon\n");
+				return -1;
+			}
+			if (pid > 0) return 0;
+		fakedns_daemon_sock();
 	}
 
 	if (!strcmp(argv[1], "reload") || !strcmp(argv[1], "stop")) {
@@ -231,8 +220,10 @@ int main(int argc, char *argv[]) {
 		strncpy(daemon_sock.sun_path, SOCKET_PATH, sizeof(daemon_sock.sun_path) - 1);
 
 		if (connect(sockfd, (struct sockaddr *)(&daemon_sock), sizeof(daemon_sock)) == -1) {
-			printf("Failed to connect to the daemon\n");
 			close(sockfd);
+			if (!strcmp(argv[1], "stop")) {
+				unlink(SOCKET_PATH);
+			}
 			return -1;
 		}
 
@@ -240,7 +231,7 @@ int main(int argc, char *argv[]) {
 			printf("Failed to write to socket\n");
 		}
 		close(sockfd);
-
+		
 		return 0;
 	}
 

@@ -9,5 +9,5 @@ struct writelog_args {
 };
 
 int write_log(struct writelog_args *arg);
-
+void qname_to_dname(unsigned char *qname, char *dname);
 #endif
