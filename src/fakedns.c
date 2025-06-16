@@ -14,7 +14,7 @@
 #include "writelog.h"
 
 pthread_mutex_t g_mutex = PTHREAD_MUTEX_INITIALIZER;
-int g_flag; // flag = 0 là dừng, flag = 1 là chạy, flag = 2 là đang có lỗi
+int g_flag; // flag = 0 là dừng, flag = 1 là chạy
 
 struct fakedns_args {
 	struct config conf;
@@ -32,26 +32,6 @@ int start_fakedns(struct fakedns_args *fakedns) {
 		return -1;
 	}
 
-	printf("=== DEBUG: loaded %d IP entries ===\n", fakedns->conf.ip_count);
-for (int i = 0; i < fakedns->conf.ip_count; i++) {
-    printf("  IP %s has %d blacklist domains:\n", 
-        fakedns->conf.ips[i], 
-        fakedns->conf.lists[i].qname_count);
-    for (int j = 0; j < fakedns->conf.lists[i].qname_count; j++) {
-        char dname[MAX_DNS_QNAME_LEN];
-        qname_to_dname(fakedns->conf.lists[i].qnames[j], dname);
-        printf("    - %s\n", dname);
-    }
-}
-printf("=== DEBUG: default list has %d domains ===\n",
-    fakedns->conf.default_list.qname_count);
-for (int j = 0; j < fakedns->conf.default_list.qname_count; j++) {
-    char dname[MAX_DNS_QNAME_LEN];
-    qname_to_dname(fakedns->conf.default_list.qnames[j], dname);
-    printf("    - %s\n", dname);
-}
-
-
 	// Khởi tạo hàng đợi
 	fakedns->queue = queue_init();
 	if (!(fakedns->queue)) {
@@ -65,9 +45,8 @@ for (int j = 0; j < fakedns->conf.default_list.qname_count; j++) {
 		return -1;
 	}
 
-	// Bắt đầu chương trình
 	g_flag = 1;
-	// capture_response()
+	// Bắt đầu capture_response()
 	struct capture_response_args *capture_response_arg = (struct capture_response_args *)malloc(sizeof(struct capture_response_args));
 	if (!capture_response_arg) {
 		printf("Failed to write capture_response_arg\n");
@@ -82,7 +61,7 @@ for (int j = 0; j < fakedns->conf.default_list.qname_count; j++) {
 		return -1;
 	}
 
-	// writelog()
+	// Bắt đầu writelog()
 	struct writelog_args *writelog_arg = (struct writelog_args *)malloc(sizeof(struct writelog_args));
 	if (!writelog_arg) {
 		printf("Failed to write writelog_arg\n");

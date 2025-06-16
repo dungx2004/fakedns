@@ -150,8 +150,7 @@ void inject_response(libnet_t *libnet, const struct dns_query *query, unsigned c
 	} else {
 		libnet_build_ipv4(LIBNET_IPV4_H + LIBNET_UDP_H + LIBNET_DNS_H + payload_len,
 				0, libnet_get_prand(LIBNET_PR8), 0, 64, IPPROTO_UDP, 0,
-				query->ip_dest, query->ip_src,
-				NULL, 0, libnet, 0);
+				query->ip_dest, query->ip_src, NULL, 0, libnet, 0);
 
 		libnet_build_ethernet(query->mac_src, query->mac_dest, ETHERTYPE_IP, NULL, 0, libnet, 0);
 	}

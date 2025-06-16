@@ -29,7 +29,6 @@ char *dup_str(const char *s) {
 	return d ? strcpy(d, s) : NULL;
 }
 
-// Helper: convert a YAML scalar node to C string
 static const char *node_str(yaml_document_t *doc, yaml_node_t *node) {
 	return (const char *)node->data.scalar.value;
 }
@@ -59,14 +58,12 @@ int config_read(struct config *conf) {
 		return -1;
 	}
 
-	// Root must be a mapping
 	yaml_node_t *root = yaml_document_get_root_node(&doc);
 	if (!root || root->type != YAML_MAPPING_NODE) {
 		fprintf(stderr, "YAML root is not a mapping\n");
 		goto error;
 	}
 
-	// Traverse top-level mapping
 	for (yaml_node_pair_t *pair = root->data.mapping.pairs.start;
 			pair < root->data.mapping.pairs.top; ++pair) {
 		yaml_node_t *key = yaml_document_get_node(&doc, pair->key);
